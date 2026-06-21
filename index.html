@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SKJemu — WASM / HTML5 VM</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { min-height: 100vh; }
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: radial-gradient(ellipse at top, #1a1f2e 0%, #0a0d14 100%);
+      color: #e0e6f0;
+      padding: 20px;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 32px;
+      padding: 24px 0 8px;
+    }
+    h1 {
+      font-size: 3.6rem;
+      font-weight: 800;
+      background: linear-gradient(135deg, #00ffaa 0%, #00d4ff 100%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+      letter-spacing: 3px;
+      text-shadow: 0 0 40px rgba(0, 255, 170, 0.15);
+    }
+    .subtitle {
+      color: #6b7a99;
+      font-size: 0.85rem;
+      margin-top: 10px;
+      letter-spacing: 5px;
+      text-transform: uppercase;
+    }
+
+    .controls {
+      max-width: 900px;
+      margin: 0 auto 24px;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 18px;
+    }
+    .control-card {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 14px;
+      padding: 22px;
+      transition: all 0.3s;
+      backdrop-filter: blur(8px);
+    }
+    .control-card:hover {
+      background: rgba(0, 255, 170, 0.05);
+      border-color: rgba(0, 255, 170, 0.3);
+      transform: translateY(-2px);
+    }
+    .step-badge {
+      display: inline-block;
+      width: 24px; height: 24px;
+      line-height: 24px;
+      text-align: center;
+      border-radius: 50%;
+      background: rgba(0, 255, 170, 0.15);
+      color: #00ffaa;
+      font-size: 0.75rem;
+      font-weight: 700;
+      margin-bottom: 10px;
+    }
+    .control-card label {
+      display: block;
+      font-size: 0.75rem;
+      color: #6b7a99;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      margin-bottom: 14px;
+    }
+    .btn {
+      width: 100%;
+      padding: 14px 18px;
+      background: linear-gradient(135deg, rgba(0, 255, 170, 0.12) 0%, rgba(0, 212, 255, 0.12) 100%);
+      border: 1px solid rgba(0, 255, 170, 0.4);
+      color: #00ffaa;
+      font-size: 0.95rem;
+      font-weight: 600;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      font-family: inherit;
+    }
+    .btn:hover {
+      background: linear-gradient(135deg, rgba(0, 255, 170, 0.25) 0%, rgba(0, 212, 255, 0.25) 100%);
+      box-shadow: 0 0 24px rgba(0, 255, 170, 0.25);
+    }
+    .btn-run {
+      background: linear-gradient(135deg, #00ffaa 0%, #00d4ff 100%);
+      color: #0a0d14;
+      border: none;
+    }
+    .btn-run:hover {
+      box-shadow: 0 0 32px rgba(0, 255, 170, 0.5);
+      transform: translateY(-2px);
+    }
+    .btn-run:disabled {
+      opacity: 0.4;
+      cursor: wait;
+      transform: none;
+      box-shadow: none;
+    }
+    .btn-secondary {
+      width: 100%;
+      padding: 10px 14px;
+      margin-top: 10px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px dashed rgba(0, 212, 255, 0.35);
+      color: #00d4ff;
+      font-size: 0.78rem;
+      font-weight: 500;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      font-family: inherit;
+    }
+    .btn-secondary:hover {
+      background: rgba(0, 212, 255, 0.1);
+      border-style: solid;
+      box-shadow: 0 0 16px rgba(0, 212, 255, 0.25);
+    }
+    .btn-secondary:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+    .btn-secondary.active {
+      background: rgba(0, 255, 170, 0.12);
+      border-color: #00ffaa;
+      color: #00ffaa;
+      border-style: solid;
+    }
+    .disk-info {
+      margin-top: 10px;
+      font-size: 0.75rem;
+      color: #6b7a99;
+      font-family: 'Consolas', 'Monaco', monospace;
+      min-height: 18px;
+    }
+    .disk-info.has-disk { color: #00ffaa; }
+
+    .file-name {
+      margin-top: 12px;
+      font-size: 0.8rem;
+      color: #00d4ff;
+      word-break: break-all;
+      min-height: 36px;
+      font-family: 'Consolas', 'Monaco', monospace;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      -webkit-appearance: none;
+      appearance: none;
+      height: 6px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 3px;
+      outline: none;
+      margin-top: 8px;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 22px; height: 22px;
+      background: linear-gradient(135deg, #00ffaa 0%, #00d4ff 100%);
+      border-radius: 50%;
+      cursor: pointer;
+      box-shadow: 0 0 12px rgba(0, 255, 170, 0.6);
+    }
+    input[type="range"]::-moz-range-thumb {
+      width: 22px; height: 22px;
+      background: linear-gradient(135deg, #00ffaa 0%, #00d4ff 100%);
+      border-radius: 50%;
+      cursor: pointer;
+      border: none;
+      box-shadow: 0 0 12px rgba(0, 255, 170, 0.6);
+    }
+
+    .ram-display {
+      text-align: center;
+      margin-top: 14px;
+    }
+    .ram-value {
+      font-size: 2.2rem;
+      font-weight: 800;
+      color: #00ffaa;
+      line-height: 1;
+    }
+    .ram-unit {
+      font-size: 0.9rem;
+      color: #6b7a99;
+      margin-left: 4px;
+    }
+    .ram-ticks {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 8px;
+      font-size: 0.7rem;
+      color: #4a5878;
+    }
+
+    #status {
+      max-width: 900px;
+      margin: 0 auto 24px;
+      padding: 14px 22px;
+      background: rgba(0, 0, 0, 0.4);
+      border-left: 3px solid #00ffaa;
+      border-radius: 6px;
+      font-family: 'Consolas', 'Monaco', monospace;
+      font-size: 0.9rem;
+      color: #6b7a99;
+      min-height: 48px;
+      word-break: break-word;
+    }
+    #status.error { border-color: #ff4466; color: #ff8899; }
+    #status.ok    { border-color: #00ffaa; color: #00ffaa; }
+    #status.warn  { border-color: #ffaa00; color: #ffcc66; }
+
+    #screen_wrapper {
+      max-width: 1024px;
+      margin: 0 auto;
+    }
+    #screen_container {
+      background: #000;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(0, 255, 170, 0.2);
+      display: none;
+    }
+    #screen_container > div {
+      font-family: monospace;
+      font-size: 14px;
+      line-height: 14px;
+      white-space: pre;
+      color: #fff;
+    }
+    #screen_container > canvas {
+      display: block;
+      width: 100%;
+      image-rendering: pixelated;
+    }
+
+    .toolbar {
+      max-width: 1024px;
+      margin: 16px auto 0;
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    .toolbar button {
+      padding: 8px 16px;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.12);
+      color: #e0e6f0;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.8rem;
+      font-family: inherit;
+    }
+    .toolbar button:hover { background: rgba(0,255,170,0.12); border-color: rgba(0,255,170,0.4); }
+
+    footer {
+      text-align: center;
+      margin-top: 40px;
+      color: #6b7a99;
+      font-size: 0.8rem;
+      line-height: 1.6;
+    }
+    footer a { color: #00d4ff; text-decoration: none; }
+
+    @media (max-width: 760px) {
+      .controls { grid-template-columns: 1fr; }
+      h1 { font-size: 2.4rem; letter-spacing: 2px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>SKJemu</h1>
+    <div class="subtitle">WASM · HTML5 · Browser VM</div>
+  </header>
+
+  <div class="controls">
+    <div class="control-card">
+      <span class="step-badge">1</span>
+      <label>ISO</label>
+      <input type="file" id="iso-input" accept=".iso,application/octet-stream,image/iso" style="display:none">
+      <button class="btn" id="iso-btn">Wybierz ISO</button>
+      <button class="btn-secondary" id="tinycore-btn">⬇ Pobierz TinyCore</button>
+      <div class="file-name" id="iso-name">Brak pliku</div>
+    </div>
+
+    <div class="control-card">
+      <span class="step-badge">2</span>
+      <label>RAM</label>
+      <input type="range" id="ram-slider" min="1" max="6" step="1" value="2">
+      <div class="ram-display">
+        <span class="ram-value" id="ram-display">2</span><span class="ram-unit">GB</span>
+      </div>
+      <div class="ram-ticks">
+        <span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span>
+      </div>
+    </div>
+
+    <div class="control-card">
+      <span class="step-badge">3</span>
+      <label>Run VM</label>
+      <button class="btn btn-run" id="run-btn">Uruchom VM</button>
+      <button class="btn-secondary" id="hdd-btn">💾 Dodaj dysk 1 GB</button>
+      <div class="disk-info" id="hdd-info">Brak dysku</div>
+      <div class="file-name" id="run-status">Gotowy</div>
+    </div>
+  </div>
+
+  <div id="status">&gt; Oczekiwanie na konfigurację...</div>
+
+  <div id="screen_wrapper">
+    <div id="screen_container"></div>
+    <div class="toolbar" id="toolbar" style="display:none">
+      <button id="ctrl-alt-del">Ctrl+Alt+Del</button>
+      <button id="fullscreen">Pełny ekran</button>
+      <button id="stop-vm">Zatrzymaj VM</button>
+    </div>
+  </div>
+
+  <footer>
+    SKJemu © 2026 · Powered by <a href="https://github.com/copy/v86" target="_blank" rel="noopener">v86</a> — emulator x86 w WebAssembly<br>
+    Wszystko działa lokalnie w przeglądarce. ISO nigdy nie opuszcza Twojego komputera.
+  </footer>
+
+  <!-- v86 loader z 3 fallbackami: copy.sh -> jsDelivr -> unpkg -->
+  <script>
+    (function () {
+      const V86_SOURCES = [
+        'https://copy.sh/v86/build/libv86.js',
+        'https://cdn.jsdelivr.net/npm/v86@latest/build/libv86.js',
+        'https://unpkg.com/v86@latest/build/libv86.js'
+      ];
+      window.__v86BasePathFallbacks = [
+        'https://copy.sh/v86',
+        'https://cdn.jsdelivr.net/npm/v86@latest',
+        'https://unpkg.com/v86@latest'
+      ];
+      window.__v86BasePath = window.__v86BasePathFallbacks[0];
+      let idx = 0;
+      function tryLoad() {
+        if (idx >= V86_SOURCES.length) {
+          window.__v86LoadError = 'Nie udało się załadować libv86.js z żadnego źródła.';
+          console.error('[SKJemu]', window.__v86LoadError);
+          window.dispatchEvent(new Event('v86-load-failed'));
+          return;
+        }
+        const s = document.createElement('script');
+        s.src = V86_SOURCES[idx];
+        s.async = false;
+        s.onload = function () {
+          if (typeof V86 !== 'undefined' || typeof V86Starter !== 'undefined') {
+            window.__v86BasePath = window.__v86BasePathFallbacks[idx];
+            console.log('[SKJemu] libv86.js loaded from', s.src,
+              '(global:', typeof V86 !== 'undefined' ? 'V86' : 'V86Starter', ')');
+            window.dispatchEvent(new Event('v86-loaded'));
+          } else {
+            console.warn('[SKJemu] Script loaded but V86/V86Starter missing, trying next:', s.src);
+            idx++;
+            tryLoad();
+          }
+        };
+        s.onerror = function () {
+          console.warn('[SKJemu] Failed to load libv86.js from', s.src);
+          idx++;
+          tryLoad();
+        };
+        document.head.appendChild(s);
+      }
+      tryLoad();
+    })();
+  </script>
+  <script>
+    "use strict";
+
+    const isoInput     = document.getElementById('iso-input');
+    const isoBtn       = document.getElementById('iso-btn');
+    const isoName      = document.getElementById('iso-name');
+    const tinycoreBtn  = document.getElementById('tinycore-btn');
+    const ramSlider    = document.getElementById('ram-slider');
+    const ramDisplay   = document.getElementById('ram-display');
+    const runBtn       = document.getElementById('run-btn');
+    const runStatus    = document.getElementById('run-status');
+    const hddBtn       = document.getElementById('hdd-btn');
+    const hddInfo      = document.getElementById('hdd-info');
+    const statusEl     = document.getElementById('status');
+    const screenContainer = document.getElementById('screen_container');
+    const toolbar      = document.getElementById('toolbar');
+    const ctrlAltDelBtn = document.getElementById('ctrl-alt-del');
+    const fullscreenBtn = document.getElementById('fullscreen');
+    const stopBtn      = document.getElementById('stop-vm');
+
+    let isoFile = null;
+    let emulator = null;
+    let hddBlob = null;          // 1 GB Blob trwałego dysku
+    const TINYCORE_URL = 'http://tinycorelinux.net/17.x/x86/release/TinyCore-current.iso';
+    const HDD_SIZE = 1 * 1024 * 1024 * 1024; // 1 GB
+
+    /* ====== IndexedDB — trwały storage dla ISO / dysku / RAM ====== */
+    const DB_NAME = 'skjemu-store';
+    const DB_VERSION = 1;
+    let db = null;
+
+    function dbOpen() {
+      return new Promise((resolve, reject) => {
+        const req = indexedDB.open(DB_NAME, DB_VERSION);
+        req.onupgradeneeded = (e) => {
+          const d = e.target.result;
+          if (!d.objectStoreNames.contains('files')) d.createObjectStore('files', { keyPath: 'key' });
+        };
+        req.onsuccess = (e) => { db = e.target.result; resolve(db); };
+        req.onerror = (e) => reject(e.target.error);
+      });
+    }
+    function dbPut(key, blob) {
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction('files', 'readwrite');
+        tx.objectStore('files').put({ key, blob, size: blob.size, ts: Date.now() });
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+    }
+    function dbGet(key) {
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction('files', 'readonly');
+        const req = tx.objectStore('files').get(key);
+        req.onsuccess = () => resolve(req.result || null);
+        req.onerror = () => reject(req.error);
+      });
+    }
+    function dbDel(key) {
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction('files', 'readwrite');
+        tx.objectStore('files').delete(key);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+    }
+
+    function setStatus(msg, type) {
+      statusEl.textContent = '> ' + msg;
+      statusEl.className = type || '';
+    }
+
+    /* ---------- 1. ISO ---------- */
+    isoBtn.addEventListener('click', () => isoInput.click());
+
+    isoInput.addEventListener('change', (e) => {
+      const f = e.target.files && e.target.files[0];
+      if (!f) return;
+      isoFile = f;
+      const sizeMB = (f.size / 1024 / 1024).toFixed(1);
+      isoName.textContent = f.name + '\n' + sizeMB + ' MB';
+      setStatus('ISO załadowane: ' + f.name + ' (' + sizeMB + ' MB)', 'ok');
+      runStatus.textContent = 'Gotowy do startu';
+      dbPut('iso', f).catch(err => setStatus('Uwaga: nie zapisano do IndexedDB: ' + err, 'warn'));
+    });
+
+    /* ---------- 1b. Pobierz TinyCore ---------- */
+    tinycoreBtn.addEventListener('click', async () => {
+      if (tinycoreBtn.dataset.loading === '1') return;
+      tinycoreBtn.dataset.loading = '1';
+      tinycoreBtn.disabled = true;
+      const origText = tinycoreBtn.textContent;
+      try {
+        setStatus('Pobieranie TinyCore z tinycorelinux.net (~23 MB)...');
+        const resp = await fetch(TINYCORE_URL);
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        const blob = await resp.blob();
+        isoFile = new File([blob], 'TinyCore-17.0.iso', { type: 'application/octet-stream' });
+        const sizeMB = (isoFile.size / 1024 / 1024).toFixed(1);
+        isoName.textContent = isoFile.name + '\n' + sizeMB + ' MB';
+        tinycoreBtn.textContent = '✓ Pobrano';
+        tinycoreBtn.classList.add('active');
+        setStatus('TinyCore pobrany: ' + isoFile.name + ' (' + sizeMB + ' MB)', 'ok');
+        runStatus.textContent = 'Gotowy do startu';
+        await dbPut('iso', isoFile).catch(() => {});
+      } catch (err) {
+        setStatus('Błąd pobierania TinyCore: ' + (err.message || err) + ' — możliwy blok CORS; pobierz ręcznie i wybierz plik.', 'error');
+        tinycoreBtn.textContent = origText;
+      } finally {
+        tinycoreBtn.disabled = false;
+        delete tinycoreBtn.dataset.loading;
+      }
+    });
+
+    /* ---------- 2b. Dodaj dysk 1 GB (IndexedDB) ---------- */
+    hddBtn.addEventListener('click', async () => {
+      if (hddBlob) {
+        if (!confirm('Dysk 1 GB już istnieje. Usunąć go?')) return;
+        hddBlob = null;
+        await dbDel('hdd').catch(() => {});
+        hddBtn.textContent = '💾 Dodaj dysk 1 GB';
+        hddBtn.classList.remove('active');
+        hddInfo.textContent = 'Brak dysku';
+        hddInfo.classList.remove('has-disk');
+        setStatus('Dysk usunięty.', 'warn');
+        return;
+      }
+      hddBtn.disabled = true;
+      const origText = hddBtn.textContent;
+      hddBtn.textContent = 'Tworzenie dysku...';
+      try {
+        setStatus('Tworzenie 1 GB dysku w IndexedDB (może chwilę potrwać)...');
+        const buf = new ArrayBuffer(HDD_SIZE);
+        hddBlob = new Blob([buf], { type: 'application/octet-stream' });
+        await dbPut('hdd', hddBlob);
+        hddBtn.textContent = '✓ Dysk aktywny (kliknij aby usunąć)';
+        hddBtn.classList.add('active');
+        hddInfo.textContent = 'HDD: 1.0 GB · zapisany w IndexedDB';
+        hddInfo.classList.add('has-disk');
+        setStatus('Dysk 1 GB utworzony i zapisany w IndexedDB.', 'ok');
+      } catch (err) {
+        setStatus('Błąd tworzenia dysku: ' + (err.message || err) + '. IndexedDB może mieć limit pojemności.', 'error');
+        hddBlob = null;
+        hddBtn.textContent = origText;
+      } finally {
+        hddBtn.disabled = false;
+      }
+    });
+
+    /* ---------- 2. RAM ---------- */
+    ramSlider.addEventListener('input', (e) => {
+      const v = parseInt(e.target.value, 10);
+      ramDisplay.textContent = v;
+      if (v > 4) {
+        setStatus('Uwaga: powyżej 4 GB może nie zadziałać we wszystkich przeglądarkach (limit pamięci liniowej WebAssembly).', 'warn');
+      }
+    });
+
+    /* ---------- 3. RUN VM ---------- */
+    runBtn.addEventListener('click', async () => {
+      if (!isoFile) {
+        setStatus('BŁĄD: najpierw wybierz plik ISO', 'error');
+        isoBtn.focus();
+        return;
+      }
+      const V86Ctor = typeof V86 !== 'undefined' ? V86 : (typeof V86Starter !== 'undefined' ? V86Starter : null);
+      if (!V86Ctor) {
+        setStatus('BŁĄD: biblioteka v86 (libv86.js) nie załadowała się z żadnego źródła (copy.sh, jsDelivr, unpkg). Sprawdź połączenie, wyłącz adblock lub spróbuj inną sieć.', 'error');
+        return;
+      }
+
+      // Reset poprzedniej instancji
+      if (emulator) {
+        try { emulator.destroy(); } catch (_) {}
+        emulator = null;
+        screenContainer.innerHTML = '';
+      }
+
+      const ramGB = parseInt(ramSlider.value, 10);
+      // WebAssembly memory ma limit ~4 GB. Powyżej obetnij i ostrzeż.
+      let memorySize = ramGB * 1024 * 1024 * 1024;
+      if (memorySize > 3.5 * 1024 * 1024 * 1024) {
+        memorySize = 3.5 * 1024 * 1024 * 1024;
+        setStatus('Ostrzeżenie: ' + ramGB + ' GB przekracza limit WASM — używam 3.5 GB. Inicjalizacja VM...', 'warn');
+      } else {
+        setStatus('Inicjalizacja VM (' + ramGB + ' GB RAM)...');
+      }
+
+      runBtn.disabled = true;
+      runStatus.textContent = 'Uruchamianie...';
+      screenContainer.style.display = 'block';
+      toolbar.style.display = 'flex';
+
+      try {
+        const base = window.__v86BasePath || 'https://copy.sh/v86';
+        const opts = {
+          wasm_path:        base + '/build/v86.wasm',
+          memory_size:      memorySize,
+          vga_memory_size:  8 * 1024 * 1024,
+          screen_container: screenContainer,
+          bios:             { url: base + '/bios/seabios.bin' },
+          vga_bios:         { url: base + '/bios/vgabios.bin' },
+          cdrom:            { file: isoFile },
+          autostart:        true,
+        };
+        if (hddBlob) {
+          opts.hda = { file: hddBlob };
+        }
+        emulator = new V86Ctor(opts);
+
+        emulator.add_listener('emulator-ready', () => {
+          setStatus('VM uruchomiona · ' + ramGB + ' GB RAM · ' + isoFile.name, 'ok');
+          runStatus.textContent = 'Działa ✓';
+          runBtn.disabled = false;
+        });
+
+        emulator.add_listener('emulator-started', () => {
+          setStatus('Bootowanie z ISO...', 'ok');
+        });
+
+        emulator.add_listener('emulator-error', (err) => {
+          setStatus('Błąd emulatora: ' + (err && err.message ? err.message : JSON.stringify(err)), 'error');
+          runBtn.disabled = false;
+          runStatus.textContent = 'Błąd';
+        });
+      } catch (err) {
+        setStatus('Nie udało się uruchomić VM: ' + (err && err.message ? err.message : err), 'error');
+        runBtn.disabled = false;
+        runStatus.textContent = 'Błąd';
+      }
+    });
+
+    /* ---------- Inicjalizacja — wczytaj zapisane pliki z IndexedDB ---------- */
+    (async () => {
+      try {
+        await dbOpen();
+        const savedIso = await dbGet('iso');
+        if (savedIso && savedIso.blob) {
+          isoFile = new File([savedIso.blob], 'saved-iso.iso', { type: 'application/octet-stream' });
+          const sizeMB = (isoFile.size / 1024 / 1024).toFixed(1);
+          isoName.textContent = '(z IndexedDB)\n' + sizeMB + ' MB';
+          setStatus('Wczytano ISO z IndexedDB (' + sizeMB + ' MB). Możesz uruchomić VM.', 'ok');
+          runStatus.textContent = 'Gotowy do startu';
+        }
+        const savedHdd = await dbGet('hdd');
+        if (savedHdd && savedHdd.blob) {
+          hddBlob = savedHdd.blob;
+          hddBtn.textContent = '✓ Dysk aktywny (kliknij aby usunąć)';
+          hddBtn.classList.add('active');
+          hddInfo.textContent = 'HDD: 1.0 GB · z IndexedDB';
+          hddInfo.classList.add('has-disk');
+        }
+      } catch (err) {
+        console.warn('IndexedDB init failed:', err);
+      }
+    })();
+
+    /* ---------- Toolbar ---------- */
+    ctrlAltDelBtn.addEventListener('click', () => {
+      if (emulator) {
+        emulator.keyboard_send_scancodes([0x1D, 0x38, 0x53, 0xD3 | 0x80, 0xB8, 0x9D]);
+        setStatus('Wysłano Ctrl+Alt+Del', 'ok');
+      }
+    });
+
+    fullscreenBtn.addEventListener('click', () => {
+      if (document.fullscreenElement) {
+        document.exitFullscreen();
+      } else {
+        screenContainer.requestFullscreen && screenContainer.requestFullscreen();
+      }
+    });
+
+    stopBtn.addEventListener('click', () => {
+      if (emulator) {
+        try { emulator.destroy(); } catch (_) {}
+        emulator = null;
+        screenContainer.innerHTML = '';
+        screenContainer.style.display = 'none';
+        toolbar.style.display = 'none';
+        runStatus.textContent = 'Zatrzymano';
+        setStatus('VM zatrzymana.', 'warn');
+      }
+    });
+  </script>
+</body>
+</html>
